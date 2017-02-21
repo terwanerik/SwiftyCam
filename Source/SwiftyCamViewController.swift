@@ -367,7 +367,7 @@ open class SwiftyCamViewController: UIViewController {
 			return
 		}
 		
-		guard previewLayer != nil else {
+		guard let videoPreviewLayeConnection = previewLayer.videoPreviewLayer.connection else {
 			return
 		}
 		
@@ -382,7 +382,7 @@ open class SwiftyCamViewController: UIViewController {
 			previewLayer.addSubview(flashView!)
 		}
 		
-		let videoPreviewLayerOrientation = previewLayer!.videoPreviewLayer.connection.videoOrientation
+		let videoPreviewLayerOrientation = videoPreviewLayeConnection.videoOrientation
 		
 		sessionQueue.async { [unowned self] in
 			if !movieFileOutput.isRecording {
