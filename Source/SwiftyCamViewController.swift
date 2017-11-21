@@ -26,7 +26,7 @@ open class SwiftyCamViewController: UIViewController {
 	// MARK: Enumeration Declaration
 	
 	/// Enumeration for Camera Selection
- 
+	
 	public enum CameraSelection {
 		
 		/// Camera on the back of the device
@@ -35,7 +35,7 @@ open class SwiftyCamViewController: UIViewController {
 		/// Camera on the front of the device
 		case front
 	}
- 
+	
 	/// Enumeration for video quality of the capture session. Corresponds to a AVCaptureSessionPreset
 	
 	
@@ -279,13 +279,14 @@ open class SwiftyCamViewController: UIViewController {
 				// Prompt to App Settings
 				self.promptToAppSettings()
 			case .configurationFailed:
+				break
 				// Unknown Error
-				DispatchQueue.main.async(execute: { [unowned self] in
-					let message = NSLocalizedString("Unable to capture media", comment: "Alert message when something goes wrong during capture session configuration")
-					let alertController = UIAlertController(title: "AVCam", message: message, preferredStyle: .alert)
-					alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"), style: .cancel, handler: nil))
-					self.present(alertController, animated: true, completion: nil)
-				})
+				//				DispatchQueue.main.async(execute: { [unowned self] in
+				//					let message = NSLocalizedString("Unable to capture media", comment: "Alert message when something goes wrong during capture session configuration")
+				//					let alertController = UIAlertController(title: "AVCam", message: message, preferredStyle: .alert)
+				//					alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"), style: .cancel, handler: nil))
+				//					self.present(alertController, animated: true, completion: nil)
+				//				})
 			}
 		}
 	}
@@ -823,7 +824,7 @@ open class SwiftyCamViewController: UIViewController {
 		
 		do{
 			try AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayAndRecord,
-			                                                with: [.duckOthers, .defaultToSpeaker])
+																											with: [.duckOthers, .defaultToSpeaker])
 			
 			session.automaticallyConfiguresApplicationAudioSession = false
 		}
@@ -1039,7 +1040,10 @@ extension SwiftyCamViewController {
 		let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTapGesture(tap:)))
 		doubleTapGesture.numberOfTapsRequired = 2
 		doubleTapGesture.delegate = self
+		
 		view.addGestureRecognizer(doubleTapGesture)
+		
+		singleTapGesture.require(toFail: doubleTapGesture)
 	}
 }
 
