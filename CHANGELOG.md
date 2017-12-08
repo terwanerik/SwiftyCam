@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## Version 2.6.0
+- Fixed issue with crashing during video recording
+- Using storyboard subviews should no longer require calling `bringSubvviewToFront`
+- Changed demo project to use autolayout
+- Reverted Swift4 changes to new branch
+
+## Version 2.4.0
+- Added support for no-audio video recording
+- Added `audioEnabled` property
+- Added support for Auto Rotate view
+- Added `allowAutoRotate` property
+- Added support for modifying the Preview Layer's Video Gravity
+- Added `videoGravity` property
+- Changed `session` to public
+- Changed `panGesture` and `pinchGesture` to public
+
+## Version 2.3.0
+- Added support to vertically swipt to zoom
+- Added ```swipeToZoom``` property
+- Added support for inverting zoom directions for swipeToZoom
+- Added ```swipeToZoomInverted``` property
+
+## Version 2.2.2
+- Fixed issue with landscape orientation 
+- Fixed issue with SwiftyCam crashing by multiple double-tap camera switching
+
+## Version 2.2.1
+- Added Carthage support
+
+## Version 2.2.0
+- Added support for landsacpe device orientations
+- Added maximum zoom level property
+
 ## Version 2.1.0
 - Added ability to change default camera orientation
 - Added `defaultCamera` property

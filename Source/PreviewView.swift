@@ -17,19 +17,51 @@ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 import UIKit
 import AVFoundation
 
-public class PreviewView: UIView {
+/// A function to specifty the Preview Layer's videoGravity. Indicates how the video is displayed within a player layer’s bounds rect.
+public enum SwiftyCamVideoGravity {
 	
-	override init(frame: CGRect) {
+	/**
+	- Specifies that the video should be stretched to fill the layer’s bounds
+	- Corrsponds to `AVLayerVideoGravityResize`
+	*/
+	case resize
+	/**
+	- Specifies that the player should preserve the video’s aspect ratio and fit the video within the layer’s bounds.
+	- Corresponds to `AVLayerVideoGravityResizeAspect`
+	*/
+	case resizeAspect
+	/**
+	- Specifies that the player should preserve the video’s aspect ratio and fill the layer’s bounds.
+	- Correponds to `AVLayerVideoGravityResizeAspectFill`
+	*/
+	case resizeAspectFill
+}
+
+class PreviewView: UIView {
+	
+	private var gravity: SwiftyCamVideoGravity = .resizeAspect
+	
+	init(frame: CGRect, videoGravity: SwiftyCamVideoGravity) {
+		gravity = videoGravity
 		super.init(frame: frame)
 		self.backgroundColor = UIColor.black
 	}
 	
-	required public init?(coder aDecoder: NSCoder) {
+	required init?(coder aDecoder: NSCoder) {
 		super.init(coder: aDecoder)
 	}
 	
 	var videoPreviewLayer: AVCaptureVideoPreviewLayer {
-		return layer as! AVCaptureVideoPreviewLayer
+		let previewlayer = layer as! AVCaptureVideoPreviewLayer
+		switch gravity {
+		case .resize:
+			previewlayer.videoGravity = AVLayerVideoGravityResize
+		case .resizeAspect:
+			previewlayer.videoGravity = AVLayerVideoGravityResizeAspect
+		case .resizeAspectFill:
+			previewlayer.videoGravity = AVLayerVideoGravityResizeAspectFill
+		}
+		return previewlayer
 	}
 	
 	var session: AVCaptureSession? {
