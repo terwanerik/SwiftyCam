@@ -11,8 +11,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
 BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
 GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
-
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
 
 import UIKit
 import AVFoundation
@@ -91,7 +91,7 @@ open class SwiftyCamViewController: UIViewController {
 	
 	/// Public Camera Delegate for the Custom View Controller Subclass
 	
-	public var cameraDelegate: SwiftyCamViewControllerDelegate?
+	public weak var cameraDelegate: SwiftyCamViewControllerDelegate?
 	
 	/// Maxiumum video duration if SwiftyCamButton is used
 	
@@ -109,13 +109,13 @@ open class SwiftyCamViewController: UIViewController {
 	
 	public var pinchToZoom                       = true
 	
+	/// Sets the maximum zoom scale allowed during gestures gesture
+	
+	public var maxZoomScale				         = CGFloat.greatestFiniteMagnitude
+	
 	/// Sets whether Tap to Focus and Tap to Adjust Exposure is enabled for the capture session
 	
 	public var tapToFocus                        = true
-	
-	/// Sets whether Tap to Focus and Tap to Adjust Exposure should show a ring, for user feedback
-	
-	public var showFocusRing                     = true
 	
 	/// Sets whether the capture session should adjust to low light conditions automatically
 	///
@@ -131,9 +131,38 @@ open class SwiftyCamViewController: UIViewController {
 	
 	public var doubleTapCameraSwitch            = true
 	
+	/// Sets whether swipe vertically to zoom is supported
+	
+	public var swipeToZoom                     = true
+	
+	/// Sets whether swipe vertically gestures should be inverted
+	
+	public var swipeToZoomInverted             = false
+	
 	/// Set default launch camera
 	
 	public var defaultCamera                   = CameraSelection.rear
+	
+	/// Sets wether the taken photo or video should be oriented according to the device orientation
+	
+	public var shouldUseDeviceOrientation      = false
+	
+	/// Sets whether or not View Controller supports auto rotation
+	
+	public var allowAutoRotate                = false
+	
+	/// Specifies the [videoGravity](https://developer.apple.com/reference/avfoundation/avcapturevideopreviewlayer/1386708-videogravity) for the preview layer.
+	public var videoGravity                   : SwiftyCamVideoGravity = .resizeAspect
+	
+	/// Sets whether or not video recordings will record audio
+	/// Setting to true will prompt user for access to microphone on View Controller launch.
+	public var audioEnabled                   = true
+	
+	/// Public access to Pinch Gesture
+	fileprivate(set) public var pinchGesture  : UIPinchGestureRecognizer!
+	
+	/// Public access to Pan Gesture
+	fileprivate(set) public var panGesture    : UIPanGestureRecognizer!
 	
 	
 	// MARK: Public Get-only Variable Declarations
@@ -154,7 +183,7 @@ open class SwiftyCamViewController: UIViewController {
 	
 	/// Current Capture Session
 	
-	fileprivate let session                      = AVCaptureSession()
+	public let session                           = AVCaptureSession()
 	
 	/// Serial queue used for setting up session
 	
@@ -200,20 +229,24 @@ open class SwiftyCamViewController: UIViewController {
 	
 	/// PreviewView for the capture session
 	
-	public var previewLayer                 : PreviewView!
+	fileprivate var previewLayer                 : PreviewView!
 	
 	/// UIView for front facing flash
 	
 	fileprivate var flashView                    : UIView?
 	
-	/// UIView for user feedback of tap to focus
+	/// Pan Translation
 	
-	fileprivate var focusRing: UIView?
+	fileprivate var previousPanTranslation       : CGFloat = 0.0
+	
+	/// Last changed orientation
+	
+	fileprivate var deviceOrientation            : UIDeviceOrientation?
 	
 	/// Disable view autorotation for forced portrait recorindg
 	
 	override open var shouldAutorotate: Bool {
-		return false
+		return allowAutoRotate
 	}
 	
 	// MARK: ViewDidLoad
@@ -222,11 +255,13 @@ open class SwiftyCamViewController: UIViewController {
 	
 	override open func viewDidLoad() {
 		super.viewDidLoad()
-		previewLayer = PreviewView(frame: self.view.frame)
+		previewLayer = PreviewView(frame: view.frame, videoGravity: videoGravity)
+		view.addSubview(previewLayer)
+		view.sendSubview(toBack: previewLayer)
 		
 		// Add Gesture Recognizers
 		
-		addGestureRecognizersTo(view: previewLayer)
+		addGestureRecognizers()
 		
 		previewLayer.session = session
 		
@@ -257,6 +292,54 @@ open class SwiftyCamViewController: UIViewController {
 		}
 	}
 	
+	// MARK: ViewDidLayoutSubviews
+	
+	/// ViewDidLayoutSubviews() Implementation
+	private func updatePreviewLayer(layer: AVCaptureConnection, orientation: AVCaptureVideoOrientation) {
+		
+		layer.videoOrientation = orientation
+		
+		previewLayer.frame = self.view.bounds
+		
+	}
+	
+	override open func viewDidLayoutSubviews() {
+		super.viewDidLayoutSubviews()
+		
+		if let connection =  self.previewLayer?.videoPreviewLayer.connection  {
+			
+			let currentDevice: UIDevice = UIDevice.current
+			
+			let orientation: UIDeviceOrientation = currentDevice.orientation
+			
+			let previewLayerConnection : AVCaptureConnection = connection
+			
+			if previewLayerConnection.isVideoOrientationSupported {
+				
+				switch (orientation) {
+				case .portrait: updatePreviewLayer(layer: previewLayerConnection, orientation: .portrait)
+				
+					break
+					
+				case .landscapeRight: updatePreviewLayer(layer: previewLayerConnection, orientation: .landscapeLeft)
+				
+					break
+					
+				case .landscapeLeft: updatePreviewLayer(layer: previewLayerConnection, orientation: .landscapeRight)
+				
+					break
+					
+				case .portraitUpsideDown: updatePreviewLayer(layer: previewLayerConnection, orientation: .portraitUpsideDown)
+				
+					break
+					
+				default: updatePreviewLayer(layer: previewLayerConnection, orientation: .portrait)
+				
+					break
+				}
+			}
+		}
+	}
 	// MARK: ViewDidAppear
 	
 	/// ViewDidAppear(_ animated:) Implementation
@@ -264,6 +347,12 @@ open class SwiftyCamViewController: UIViewController {
 	
 	override open func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
+		
+		// Subscribe to device rotation notifications
+		
+		if shouldUseDeviceOrientation {
+			subscribeToDeviceOrientationChangeNotifications()
+		}
 		
 		// Set background audio preference
 		
@@ -275,18 +364,23 @@ open class SwiftyCamViewController: UIViewController {
 				// Begin Session
 				self.session.startRunning()
 				self.isSessionRunning = self.session.isRunning
+				
+				// Preview layer video orientation can be set only after the connection is created
+				DispatchQueue.main.async {
+					self.previewLayer.videoPreviewLayer.connection?.videoOrientation = self.getPreviewLayerOrientation()
+				}
+				
 			case .notAuthorized:
 				// Prompt to App Settings
 				self.promptToAppSettings()
 			case .configurationFailed:
-				break
 				// Unknown Error
-				//				DispatchQueue.main.async(execute: { [unowned self] in
-				//					let message = NSLocalizedString("Unable to capture media", comment: "Alert message when something goes wrong during capture session configuration")
-				//					let alertController = UIAlertController(title: "AVCam", message: message, preferredStyle: .alert)
-				//					alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"), style: .cancel, handler: nil))
-				//					self.present(alertController, animated: true, completion: nil)
-				//				})
+				DispatchQueue.main.async(execute: { [unowned self] in
+					let message = NSLocalizedString("Unable to capture media", comment: "Alert message when something goes wrong during capture session configuration")
+					let alertController = UIAlertController(title: "AVCam", message: message, preferredStyle: .alert)
+					alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"), style: .cancel, handler: nil))
+					self.present(alertController, animated: true, completion: nil)
+				})
 			}
 		}
 	}
@@ -307,6 +401,11 @@ open class SwiftyCamViewController: UIViewController {
 		
 		//Disble flash if it is currently enabled
 		disableFlash()
+		
+		// Unsubscribe from device rotation notifications
+		if shouldUseDeviceOrientation {
+			unsubscribeFromDeviceOrientationChangeNotifications()
+		}
 	}
 	
 	// MARK: Public Functions
@@ -368,10 +467,6 @@ open class SwiftyCamViewController: UIViewController {
 			return
 		}
 		
-		guard let videoPreviewLayeConnection = previewLayer.videoPreviewLayer.connection else {
-			return
-		}
-		
 		if currentCamera == .rear && flashEnabled == true {
 			enableFlash()
 		}
@@ -382,8 +477,6 @@ open class SwiftyCamViewController: UIViewController {
 			flashView?.alpha = 0.85
 			previewLayer.addSubview(flashView!)
 		}
-		
-		let videoPreviewLayerOrientation = videoPreviewLayeConnection.videoOrientation
 		
 		sessionQueue.async { [unowned self] in
 			if !movieFileOutput.isRecording {
@@ -399,7 +492,8 @@ open class SwiftyCamViewController: UIViewController {
 				if self.currentCamera == .front {
 					movieFileOutputConnection?.isVideoMirrored = true
 				}
-				movieFileOutputConnection?.videoOrientation = videoPreviewLayerOrientation
+				
+				movieFileOutputConnection?.videoOrientation = self.getVideoOrientation()
 				
 				// Start recording to a temporary file.
 				let outputFileName = UUID().uuidString
@@ -460,6 +554,11 @@ open class SwiftyCamViewController: UIViewController {
 			print("[SwiftyCam]: Switching between cameras while recording video is not supported")
 			return
 		}
+		
+		guard session.isRunning == true else {
+			return
+		}
+		
 		switch currentCamera {
 		case .front:
 			currentCamera = .rear
@@ -530,7 +629,6 @@ open class SwiftyCamViewController: UIViewController {
 	/// Configure image quality preset
 	
 	fileprivate func configureVideoPreset() {
-		
 		if currentCamera == .front {
 			session.sessionPreset = videoInputPresetFromVideoQuality(quality: .high)
 		} else {
@@ -603,6 +701,9 @@ open class SwiftyCamViewController: UIViewController {
 	/// Add Audio Inputs
 	
 	fileprivate func addAudioInput() {
+		guard audioEnabled == true else {
+			return
+		}
 		do {
 			let audioDevice = AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeAudio)
 			let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice)
@@ -647,6 +748,68 @@ open class SwiftyCamViewController: UIViewController {
 		}
 	}
 	
+	/// Orientation management
+	
+	fileprivate func subscribeToDeviceOrientationChangeNotifications() {
+		self.deviceOrientation = UIDevice.current.orientation
+		NotificationCenter.default.addObserver(self, selector: #selector(deviceDidRotate), name: NSNotification.Name.UIDeviceOrientationDidChange, object: nil)
+	}
+	
+	fileprivate func unsubscribeFromDeviceOrientationChangeNotifications() {
+		NotificationCenter.default.removeObserver(self, name: NSNotification.Name.UIDeviceOrientationDidChange, object: nil)
+		self.deviceOrientation = nil
+	}
+	
+	@objc fileprivate func deviceDidRotate() {
+		if !UIDevice.current.orientation.isFlat {
+			self.deviceOrientation = UIDevice.current.orientation
+		}
+	}
+	
+	fileprivate func getPreviewLayerOrientation() -> AVCaptureVideoOrientation {
+		// Depends on layout orientation, not device orientation
+		switch UIApplication.shared.statusBarOrientation {
+		case .portrait, .unknown:
+			return AVCaptureVideoOrientation.portrait
+		case .landscapeLeft:
+			return AVCaptureVideoOrientation.landscapeLeft
+		case .landscapeRight:
+			return AVCaptureVideoOrientation.landscapeRight
+		case .portraitUpsideDown:
+			return AVCaptureVideoOrientation.portraitUpsideDown
+		}
+	}
+	
+	fileprivate func getVideoOrientation() -> AVCaptureVideoOrientation {
+		guard shouldUseDeviceOrientation, let deviceOrientation = self.deviceOrientation else { return previewLayer!.videoPreviewLayer.connection.videoOrientation }
+		
+		switch deviceOrientation {
+		case .landscapeLeft:
+			return .landscapeRight
+		case .landscapeRight:
+			return .landscapeLeft
+		case .portraitUpsideDown:
+			return .portraitUpsideDown
+		default:
+			return .portrait
+		}
+	}
+	
+	fileprivate func getImageOrientation(forCamera: CameraSelection) -> UIImageOrientation {
+		guard shouldUseDeviceOrientation, let deviceOrientation = self.deviceOrientation else { return forCamera == .rear ? .right : .leftMirrored }
+		
+		switch deviceOrientation {
+		case .landscapeLeft:
+			return forCamera == .rear ? .up : .downMirrored
+		case .landscapeRight:
+			return forCamera == .rear ? .down : .upMirrored
+		case .portraitUpsideDown:
+			return forCamera == .rear ? .left : .rightMirrored
+		default:
+			return forCamera == .rear ? .right : .leftMirrored
+		}
+	}
+	
 	/**
 	Returns a UIImage from Image Data.
 	
@@ -659,23 +822,17 @@ open class SwiftyCamViewController: UIViewController {
 		let dataProvider = CGDataProvider(data: imageData as CFData)
 		let cgImageRef = CGImage(jpegDataProviderSource: dataProvider!, decode: nil, shouldInterpolate: true, intent: CGColorRenderingIntent.defaultIntent)
 		
-		var image: UIImage!
-		
 		// Set proper orientation for photo
 		// If camera is currently set to front camera, flip image
 		
-		switch self.currentCamera {
-		case .front:
-			image = UIImage(cgImage: cgImageRef!, scale: 1.0, orientation: .leftMirrored)
-		case .rear:
-			image = UIImage(cgImage: cgImageRef!, scale: 1.0, orientation: .right)
-		}
+		let image = UIImage(cgImage: cgImageRef!, scale: 1.0, orientation: self.getImageOrientation(forCamera: self.currentCamera))
+		
 		return image
 	}
 	
 	fileprivate func capturePhotoAsyncronously(completionHandler: @escaping(Bool) -> ()) {
 		if let videoConnection = photoFileOutput?.connection(withMediaType: AVMediaTypeVideo) {
-			videoConnection.videoOrientation = AVCaptureVideoOrientation.portrait
+			
 			photoFileOutput?.captureStillImageAsynchronously(from: videoConnection, completionHandler: {(sampleBuffer, error) in
 				if (sampleBuffer != nil) {
 					let imageData = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(sampleBuffer)
@@ -822,6 +979,10 @@ open class SwiftyCamViewController: UIViewController {
 			return
 		}
 		
+		guard audioEnabled == true else {
+			return
+		}
+		
 		do{
 			try AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayAndRecord,
 																											with: [.duckOthers, .defaultToSpeaker])
@@ -885,6 +1046,9 @@ extension SwiftyCamViewController : AVCaptureFileOutputRecordingDelegate {
 		}
 		if error != nil {
 			print("[SwiftyCam]: Movie file finishing error: \(error)")
+			DispatchQueue.main.async {
+				self.cameraDelegate?.swiftyCam(self, didFailToRecordVideo: error)
+			}
 		} else {
 			//Call delegate function with the URL of the outputfile
 			DispatchQueue.main.async {
@@ -902,14 +1066,14 @@ extension SwiftyCamViewController {
 	
 	@objc fileprivate func zoomGesture(pinch: UIPinchGestureRecognizer) {
 		guard pinchToZoom == true && self.currentCamera == .rear else {
-			//ignore pinch if pinchToZoom is set to false
+			//ignore pinch
 			return
 		}
 		do {
 			let captureDevice = AVCaptureDevice.devices().first as? AVCaptureDevice
 			try captureDevice?.lockForConfiguration()
 			
-			zoomScale = max(1.0, min(beginZoomScale * pinch.scale,  captureDevice!.activeFormat.videoMaxZoomFactor))
+			zoomScale = min(maxZoomScale, max(1.0, min(beginZoomScale * pinch.scale,  captureDevice!.activeFormat.videoMaxZoomFactor)))
 			
 			captureDevice?.videoZoomFactor = zoomScale
 			
@@ -933,32 +1097,11 @@ extension SwiftyCamViewController {
 			return
 		}
 		
-		if showFocusRing && focusRing == nil {
-			focusRing = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
-			focusRing?.backgroundColor = UIColor(white: 1.0, alpha: 0.3)
-			focusRing?.translatesAutoresizingMaskIntoConstraints = false
-			focusRing?.layer.masksToBounds = true
-			focusRing?.layer.cornerRadius = 15
-			focusRing?.layer.borderColor = UIColor.white.cgColor
-			focusRing?.layer.borderWidth = 2
-			focusRing?.layer.zPosition = 10
-			focusRing?.alpha = 0
-			
-			self.view.addSubview(focusRing!)
-		}
-		
 		let screenSize = previewLayer!.bounds.size
 		let tapPoint = tap.location(in: previewLayer!)
 		let x = tapPoint.y / screenSize.height
 		let y = 1.0 - tapPoint.x / screenSize.width
 		let focusPoint = CGPoint(x: x, y: y)
-		
-		if focusRing != nil {
-			focusRing?.frame.origin.x = tapPoint.x - (focusRing!.frame.size.width / 2)
-			focusRing?.frame.origin.y = tapPoint.y - (focusRing!.frame.size.height / 2)
-			
-			_animateFocusRing()
-		}
 		
 		if let device = videoDevice {
 			do {
@@ -983,34 +1126,6 @@ extension SwiftyCamViewController {
 		}
 	}
 	
-	fileprivate func _animateFocusRing() {
-		UIView.animate(withDuration: 0.2, animations: {
-			self.focusRing?.alpha = 1.0
-		}, completion: { (complete) in
-			UIView.animateKeyframes(withDuration: 3.0, delay: 0.0, options: [], animations: {
-				UIView.addKeyframe(withRelativeStartTime: 0.0, relativeDuration: 0.25) {
-					self.focusRing?.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
-				}
-				
-				UIView.addKeyframe(withRelativeStartTime: 0.25, relativeDuration: 0.25) {
-					self.focusRing?.transform = CGAffineTransform(scaleX: 1.0, y: 1.0)
-				}
-				
-				UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.25) {
-					self.focusRing?.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
-				}
-				
-				UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) {
-					self.focusRing?.transform = CGAffineTransform(scaleX: 1.0, y: 1.0)
-				}
-			}, completion: { (done) in
-				UIView.animate(withDuration: 0.7, animations: {
-					self.focusRing?.alpha = 0.0
-				})
-			})
-		})
-	}
-	
 	/// Handle double tap gesture
 	
 	@objc fileprivate func doubleTapGesture(tap: UITapGestureRecognizer) {
@@ -1020,6 +1135,48 @@ extension SwiftyCamViewController {
 		switchCamera()
 	}
 	
+	@objc private func panGesture(pan: UIPanGestureRecognizer) {
+		
+		guard swipeToZoom == true && self.currentCamera == .rear else {
+			//ignore pan
+			return
+		}
+		let currentTranslation    = pan.translation(in: view).y
+		let translationDifference = currentTranslation - previousPanTranslation
+		
+		do {
+			let captureDevice = AVCaptureDevice.devices().first as? AVCaptureDevice
+			try captureDevice?.lockForConfiguration()
+			
+			let currentZoom = captureDevice?.videoZoomFactor ?? 0.0
+			
+			if swipeToZoomInverted == true {
+				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom - (translationDifference / 75),  captureDevice!.activeFormat.videoMaxZoomFactor)))
+			} else {
+				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom + (translationDifference / 75),  captureDevice!.activeFormat.videoMaxZoomFactor)))
+				
+			}
+			
+			captureDevice?.videoZoomFactor = zoomScale
+			
+			// Call Delegate function with current zoom scale
+			DispatchQueue.main.async {
+				self.cameraDelegate?.swiftyCam(self, didChangeZoomLevel: self.zoomScale)
+			}
+			
+			captureDevice?.unlockForConfiguration()
+			
+		} catch {
+			print("[SwiftyCam]: Error locking configuration")
+		}
+		
+		if pan.state == .ended || pan.state == .failed || pan.state == .cancelled {
+			previousPanTranslation = 0.0
+		} else {
+			previousPanTranslation = currentTranslation
+		}
+	}
+	
 	/**
 	Add pinch gesture recognizer and double tap gesture recognizer to currentView
 	
@@ -1027,23 +1184,24 @@ extension SwiftyCamViewController {
 	
 	*/
 	
-	fileprivate func addGestureRecognizersTo(view: UIView) {
-		let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(zoomGesture(pinch:)))
+	fileprivate func addGestureRecognizers() {
+		pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(zoomGesture(pinch:)))
 		pinchGesture.delegate = self
-		view.addGestureRecognizer(pinchGesture)
+		previewLayer.addGestureRecognizer(pinchGesture)
 		
 		let singleTapGesture = UITapGestureRecognizer(target: self, action: #selector(singleTapGesture(tap:)))
 		singleTapGesture.numberOfTapsRequired = 1
 		singleTapGesture.delegate = self
-		view.addGestureRecognizer(singleTapGesture)
+		previewLayer.addGestureRecognizer(singleTapGesture)
 		
 		let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTapGesture(tap:)))
 		doubleTapGesture.numberOfTapsRequired = 2
 		doubleTapGesture.delegate = self
+		previewLayer.addGestureRecognizer(doubleTapGesture)
 		
-		view.addGestureRecognizer(doubleTapGesture)
-		
-		singleTapGesture.require(toFail: doubleTapGesture)
+		panGesture = UIPanGestureRecognizer(target: self, action: #selector(panGesture(pan:)))
+		panGesture.delegate = self
+		previewLayer.addGestureRecognizer(panGesture)
 	}
 }
 
@@ -1061,7 +1219,3 @@ extension SwiftyCamViewController : UIGestureRecognizerDelegate {
 		return true
 	}
 }
-
-
-
-
