@@ -117,6 +117,10 @@ open class SwiftyCamViewController: UIViewController {
 	
 	public var tapToFocus                        = true
 	
+	/// Sets whether Tap to Focus and Tap to Adjust Exposure should show a ring, for user feedback
+	
+	public var showFocusRing                     = true
+	
 	/// Sets whether the capture session should adjust to low light conditions automatically
 	///
 	/// Only supported on iPhone 5 and 5C
@@ -158,6 +162,10 @@ open class SwiftyCamViewController: UIViewController {
 	/// Setting to true will prompt user for access to microphone on View Controller launch.
 	public var audioEnabled                   = true
 	
+	/// PreviewView for the capture session
+	
+	public var previewLayer                 : PreviewView!
+	
 	/// Public access to Pinch Gesture
 	fileprivate(set) public var pinchGesture  : UIPinchGestureRecognizer!
 	
@@ -179,11 +187,11 @@ open class SwiftyCamViewController: UIViewController {
 	
 	private(set) public var currentCamera        = CameraSelection.rear
 	
-	// MARK: Private Constant Declarations
-	
 	/// Current Capture Session
 	
 	public let session                           = AVCaptureSession()
+	
+	// MARK: Private Constant Declarations
 	
 	/// Serial queue used for setting up session
 	
@@ -227,13 +235,13 @@ open class SwiftyCamViewController: UIViewController {
 	
 	fileprivate var videoDevice                  : AVCaptureDevice?
 	
-	/// PreviewView for the capture session
-	
-	fileprivate var previewLayer                 : PreviewView!
-	
 	/// UIView for front facing flash
 	
 	fileprivate var flashView                    : UIView?
+	
+	/// UIView for user feedback of tap to focus
+	
+	fileprivate var focusRing: UIView?
 	
 	/// Pan Translation
 	
@@ -464,6 +472,10 @@ open class SwiftyCamViewController: UIViewController {
 	
 	public func startVideoRecording() {
 		guard let movieFileOutput = self.movieFileOutput else {
+			return
+		}
+		
+		guard previewLayer != nil else {
 			return
 		}
 		
@@ -1097,11 +1109,32 @@ extension SwiftyCamViewController {
 			return
 		}
 		
+		if showFocusRing && focusRing == nil {
+			focusRing = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
+			focusRing?.backgroundColor = UIColor(white: 1.0, alpha: 0.3)
+			focusRing?.translatesAutoresizingMaskIntoConstraints = false
+			focusRing?.layer.masksToBounds = true
+			focusRing?.layer.cornerRadius = 15
+			focusRing?.layer.borderColor = UIColor.white.cgColor
+			focusRing?.layer.borderWidth = 2
+			focusRing?.layer.zPosition = 10
+			focusRing?.alpha = 0
+			
+			self.view.addSubview(focusRing!)
+		}
+		
 		let screenSize = previewLayer!.bounds.size
 		let tapPoint = tap.location(in: previewLayer!)
 		let x = tapPoint.y / screenSize.height
 		let y = 1.0 - tapPoint.x / screenSize.width
 		let focusPoint = CGPoint(x: x, y: y)
+		
+		if focusRing != nil {
+			focusRing?.frame.origin.x = tapPoint.x - (focusRing!.frame.size.width / 2)
+			focusRing?.frame.origin.y = tapPoint.y - (focusRing!.frame.size.height / 2)
+			
+			_animateFocusRing()
+		}
 		
 		if let device = videoDevice {
 			do {
@@ -1124,6 +1157,34 @@ extension SwiftyCamViewController {
 				// just ignore
 			}
 		}
+	}
+	
+	fileprivate func _animateFocusRing() {
+		UIView.animate(withDuration: 0.2, animations: {
+			self.focusRing?.alpha = 1.0
+		}, completion: { (complete) in
+			UIView.animateKeyframes(withDuration: 3.0, delay: 0.0, options: [], animations: {
+				UIView.addKeyframe(withRelativeStartTime: 0.0, relativeDuration: 0.25) {
+					self.focusRing?.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
+				}
+				
+				UIView.addKeyframe(withRelativeStartTime: 0.25, relativeDuration: 0.25) {
+					self.focusRing?.transform = CGAffineTransform(scaleX: 1.0, y: 1.0)
+				}
+				
+				UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.25) {
+					self.focusRing?.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
+				}
+				
+				UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) {
+					self.focusRing?.transform = CGAffineTransform(scaleX: 1.0, y: 1.0)
+				}
+			}, completion: { (done) in
+				UIView.animate(withDuration: 0.7, animations: {
+					self.focusRing?.alpha = 0.0
+				})
+			})
+		})
 	}
 	
 	/// Handle double tap gesture
@@ -1202,6 +1263,8 @@ extension SwiftyCamViewController {
 		panGesture = UIPanGestureRecognizer(target: self, action: #selector(panGesture(pan:)))
 		panGesture.delegate = self
 		previewLayer.addGestureRecognizer(panGesture)
+		
+		singleTapGesture.require(toFail: doubleTapGesture)
 	}
 }
 

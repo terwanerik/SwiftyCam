@@ -75,7 +75,7 @@ class PreviewView: UIView {
 	
 	// MARK: UIView
 	
-	override class var layerClass : AnyClass {
+	override public class var layerClass : AnyClass {
 		return AVCaptureVideoPreviewLayer.self
 	}
 }
