@@ -30,7 +30,16 @@ public protocol SwiftyCamViewControllerDelegate: class {
      */
     
     func swiftyCam(_ swiftyCam: SwiftyCamViewController, didTake photo: UIImage)
-    
+	
+	
+		/**
+		SwiftyCamViewControllerDelegate function called before SwiftyCamViewController begins recording video.
+	
+		- Parameter swiftyCam: Current SwiftyCamViewController session
+		*/
+	
+		func swiftyCam(_ swiftyCam: SwiftyCamViewController, willBeginRecordingVideo start: Bool)
+	
     /**
      SwiftyCamViewControllerDelegate function called when SwiftyCamViewController begins recording video.
      

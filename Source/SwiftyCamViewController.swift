@@ -471,6 +471,10 @@ open class SwiftyCamViewController: UIViewController {
 	*/
 	
 	public func startVideoRecording() {
+		DispatchQueue.main.async {
+			self.cameraDelegate?.swiftyCam(self, willBeginRecordingVideo: true)
+		}
+		
 		guard let movieFileOutput = self.movieFileOutput else {
 			return
 		}
@@ -578,8 +582,26 @@ open class SwiftyCamViewController: UIViewController {
 			currentCamera = .front
 		}
 		
-		session.stopRunning()
+		self.setResolution { _ in
+			//
+		}
 		
+		// If flash is enabled, disable it as the torch is needed for front facing camera
+		disableFlash()
+	}
+	
+	public func setResolution(_ callback: @escaping ((Bool) -> Void)) {
+		guard isVideoRecording != true else {
+			//TODO: Look into switching camera during video recording
+			print("[SwiftyCam]: Switching between cameras while recording video is not supported")
+			return
+		}
+		
+		guard session.isRunning == true else {
+			return
+		}
+		
+		session.stopRunning()
 		sessionQueue.async { [unowned self] in
 			
 			// remove and re-add inputs and outputs
@@ -589,15 +611,10 @@ open class SwiftyCamViewController: UIViewController {
 			}
 			
 			self.addInputs()
-			DispatchQueue.main.async {
-				self.cameraDelegate?.swiftyCam(self, didSwitchCameras: self.currentCamera)
-			}
-			
 			self.session.startRunning()
+			
+			callback(true)
 		}
-		
-		// If flash is enabled, disable it as the torch is needed for front facing camera
-		disableFlash()
 	}
 	
 	// MARK: Private Functions
@@ -619,6 +636,7 @@ open class SwiftyCamViewController: UIViewController {
 		configureVideoPreset()
 		addVideoInput()
 		addAudioInput()
+		configureVideoBuffer()
 		configureVideoOutput()
 		configurePhotoOutput()
 		
@@ -688,25 +706,25 @@ open class SwiftyCamViewController: UIViewController {
 			} catch {
 				print("[SwiftyCam]: Error locking configuration")
 			}
-		}
-		
-		do {
-			let videoDeviceInput = try AVCaptureDeviceInput(device: videoDevice!)
 			
-			if session.canAddInput(videoDeviceInput) {
-				session.addInput(videoDeviceInput)
-				self.videoDeviceInput = videoDeviceInput
-			} else {
-				print("[SwiftyCam]: Could not add video device input to the session")
-				print(session.canSetSessionPreset(videoInputPresetFromVideoQuality(quality: videoQuality)))
+			do {
+				let videoDeviceInput = try AVCaptureDeviceInput(device: device)
+				
+				if session.canAddInput(videoDeviceInput) {
+					session.addInput(videoDeviceInput)
+					self.videoDeviceInput = videoDeviceInput
+				} else {
+					print("[SwiftyCam]: Could not add video device input to the session")
+					print(session.canSetSessionPreset(videoInputPresetFromVideoQuality(quality: videoQuality)))
+					setupResult = .configurationFailed
+					session.commitConfiguration()
+					return
+				}
+			} catch {
+				print("[SwiftyCam]: Could not create video device input: \(error)")
 				setupResult = .configurationFailed
-				session.commitConfiguration()
 				return
 			}
-		} catch {
-			print("[SwiftyCam]: Could not create video device input: \(error)")
-			setupResult = .configurationFailed
-			return
 		}
 	}
 	
@@ -717,8 +735,10 @@ open class SwiftyCamViewController: UIViewController {
 			return
 		}
 		do {
-			let audioDevice = AVCaptureDevice.default(for: .audio)
-			let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice!)
+			
+			guard let audioDevice = AVCaptureDevice.default(for: .audio) else { return }
+			
+			let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice)
 			
 			if session.canAddInput(audioDeviceInput) {
 				session.addInput(audioDeviceInput)
@@ -729,6 +749,19 @@ open class SwiftyCamViewController: UIViewController {
 		}
 		catch {
 			print("[SwiftyCam]: Could not create audio device input: \(error)")
+		}
+	}
+	
+	fileprivate func configureVideoBuffer() {
+		let output = AVCaptureVideoDataOutput()
+		output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String : NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)]
+		output.alwaysDiscardsLateVideoFrames = true
+		
+		let queue = DispatchQueue(label: "output.queue")
+		output.setSampleBufferDelegate(self, queue: queue)
+		
+		if self.session.canAddOutput(output) {
+			self.session.addOutput(output)
 		}
 	}
 	
@@ -744,6 +777,7 @@ open class SwiftyCamViewController: UIViewController {
 					connection.preferredVideoStabilizationMode = .auto
 				}
 			}
+			
 			self.movieFileOutput = movieFileOutput
 		}
 	}
@@ -920,9 +954,9 @@ open class SwiftyCamViewController: UIViewController {
 	
 	fileprivate class func deviceWithMediaType(_ mediaType: AVMediaType, preferringPosition position: AVCaptureDevice.Position) -> AVCaptureDevice? {
 		let devices = AVCaptureDevice.devices(for: mediaType)
-		return devices.filter({ $0.position == position }).first
+			return devices.filter({ $0.position == position }).first
 		
-		//		return nil
+//		return nil
 	}
 	
 	/// Enable or disable flash for photo
@@ -1219,11 +1253,12 @@ extension SwiftyCamViewController {
 			
 			let currentZoom = captureDevice?.videoZoomFactor ?? 0.0
 			
+			guard let device = captureDevice else { return }
+			
 			if swipeToZoomInverted == true {
-				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom - (translationDifference / 75),  captureDevice!.activeFormat.videoMaxZoomFactor)))
+				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom - (translationDifference / 75),  device.activeFormat.videoMaxZoomFactor)))
 			} else {
-				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom + (translationDifference / 75),  captureDevice!.activeFormat.videoMaxZoomFactor)))
-				
+				zoomScale = min(maxZoomScale, max(1.0, min(currentZoom + (translationDifference / 75),  device.activeFormat.videoMaxZoomFactor)))
 			}
 			
 			captureDevice?.videoZoomFactor = zoomScale
@@ -1291,3 +1326,9 @@ extension SwiftyCamViewController : UIGestureRecognizerDelegate {
 	}
 }
 
+extension SwiftyCamViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
+	public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+//		let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+//		let cameraImage = CIImage(cvPixelBuffer: pixelBuffer!)
+	}
+}
